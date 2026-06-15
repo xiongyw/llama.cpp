@@ -6,7 +6,11 @@ llama_add_compile_flags()
 
 # llama
 
-file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")
+# Only Qwen3.5/3.6 model files (QWEN35 arch)
+set(LLAMA_MODELS_SOURCES
+    models/delta-net-base.cpp
+    models/qwen35.cpp
+)
 
 add_library(llama
             ../include/llama.h

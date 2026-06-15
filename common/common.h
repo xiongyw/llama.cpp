@@ -315,8 +315,8 @@ struct common_params_speculative_draft {
 
     int32_t n_gpu_layers = -1; // number of layers to store in VRAM for the draft model (-1 - use default)
 
-    ggml_type cache_type_k = GGML_TYPE_F16; // KV cache data type for the K
-    ggml_type cache_type_v = GGML_TYPE_F16; // KV cache data type for the V
+    ggml_type cache_type_k = GGML_TYPE_Q4_0; // KV cache data type for K (Q4_0 for 256K context on 24GB VRAM)
+    ggml_type cache_type_v = GGML_TYPE_Q4_0; // KV cache data type for V (Q4_0 for 256K context on 24GB VRAM)
 
     common_cpu_params cpuparams;
     common_cpu_params cpuparams_batch;
@@ -425,7 +425,7 @@ struct ggml_opt_optimizer_params common_opt_lr_pars(void * userdata);
 
 struct common_params {
     int32_t n_predict             =    -1; // max. number of new tokens to predict, -1 == no limit
-    int32_t n_ctx                 =     0; // context size, 0 == context the model was trained with
+    int32_t n_ctx                 = 266144; // context size (256K for Qwen3.6-27B)
     int32_t n_batch               =  2048; // logical batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_ubatch              =   512; // physical batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep                =     0; // number of tokens to keep from initial prompt
@@ -470,7 +470,7 @@ struct common_params {
     enum llama_rope_scaling_type rope_scaling_type = LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED;
     enum llama_pooling_type      pooling_type      = LLAMA_POOLING_TYPE_UNSPECIFIED; // pooling type for embeddings
     enum llama_attention_type    attention_type    = LLAMA_ATTENTION_TYPE_UNSPECIFIED; // attention type for embeddings
-    enum llama_flash_attn_type   flash_attn_type   = LLAMA_FLASH_ATTN_TYPE_AUTO; // whether to use Flash Attention
+    enum llama_flash_attn_type   flash_attn_type   = LLAMA_FLASH_ATTN_TYPE_ENABLED; // Flash Attention enabled for Qwen3.6-27B
 
     struct common_params_sampling    sampling;
     struct common_params_speculative speculative;
@@ -563,8 +563,8 @@ struct common_params {
 
     bool single_turn       = false; // single turn chat conversation
 
-    ggml_type cache_type_k = GGML_TYPE_F16; // KV cache data type for the K
-    ggml_type cache_type_v = GGML_TYPE_F16; // KV cache data type for the V
+    ggml_type cache_type_k = GGML_TYPE_Q4_0; // KV cache data type for K (Q4_0 for 256K context on 24GB VRAM)
+    ggml_type cache_type_v = GGML_TYPE_Q4_0; // KV cache data type for V (Q4_0 for 256K context on 24GB VRAM)
 
     common_conversation_mode conversation_mode = COMMON_CONVERSATION_MODE_AUTO;
 

@@ -89,9 +89,8 @@ int llama_server(int argc, char ** argv) {
     llama_backend_init();
     llama_numa_init(params.numa);
 
-    // router server never loads a model and must not touch the GPU
-    // skip device enumeration so the CUDA primary context stays uncreated
-    const bool is_router_server = params.model.path.empty();
+    // No router mode - single model server only
+    const bool is_router_server = false;
     common_params_print_info(params, !is_router_server);
 
     if (!is_router_server) {
@@ -128,126 +127,28 @@ int llama_server(int argc, char ** argv) {
 
     //
     // Router
-    //
+    // Router setup - disabled (single model only)
+    std::optional<server_models_routes> models_routes{};
 
     // register API routes
     server_routes routes(params, ctx_server);
-    server_tools tools;
 
-    std::optional<server_models_routes> models_routes{};
-    if (is_router_server) {
-        // setup server instances manager
-        try {
-            models_routes.emplace(params, argc, argv);
-        } catch (const std::exception & e) {
-            SRV_ERR("failed to initialize router models: %s\n", e.what());
-            return 1;
-        }
+    // Health check (public)
+    ctx_http.get ("/health",                   ex_wrapper(routes.get_health));
+    ctx_http.get ("/v1/health",                ex_wrapper(routes.get_health));
 
-        // proxy handlers
-        // note: routes.get_health stays the same
-        routes.get_metrics                 = models_routes->proxy_get;
-        routes.post_props                  = models_routes->proxy_post;
-        routes.post_completions            = models_routes->proxy_post;
-        routes.post_completions_oai        = models_routes->proxy_post;
-        routes.post_chat_completions       = models_routes->proxy_post;
-        routes.post_control                = models_routes->proxy_post;
-        routes.post_responses_oai          = models_routes->proxy_post;
-        routes.post_transcriptions_oai     = models_routes->proxy_post;
-        routes.post_anthropic_messages     = models_routes->proxy_post;
-        routes.post_anthropic_count_tokens = models_routes->proxy_post;
-        routes.post_infill                 = models_routes->proxy_post;
-        routes.post_embeddings             = models_routes->proxy_post;
-        routes.post_embeddings_oai         = models_routes->proxy_post;
-        routes.post_rerank                 = models_routes->proxy_post;
-        routes.post_tokenize               = models_routes->proxy_post;
-        routes.post_detokenize             = models_routes->proxy_post;
-        routes.post_apply_template         = models_routes->proxy_post;
-        routes.post_chat_completions_tok   = models_routes->proxy_post;
-        routes.post_responses_tok_oai      = models_routes->proxy_post;
-        routes.get_lora_adapters           = models_routes->proxy_get;
-        routes.post_lora_adapters          = models_routes->proxy_post;
-        routes.get_slots                   = models_routes->proxy_get;
-        routes.post_slots                  = models_routes->proxy_post;
+    // Model info (public)
+    ctx_http.get ("/models",                   ex_wrapper(routes.get_models));
+    ctx_http.get ("/v1/models",                ex_wrapper(routes.get_models));
 
-        // custom routes for router
-        routes.get_props                   = models_routes->get_router_props;
-        routes.get_models                  = models_routes->get_router_models;
+    // Chat completions (OpenAI-compatible)
+    ctx_http.post("/v1/chat/completions",      ex_wrapper(routes.post_chat_completions));
 
-        ctx_http.post("/models/load",          ex_wrapper(models_routes->post_router_models_load));
-        ctx_http.post("/models/unload",        ex_wrapper(models_routes->post_router_models_unload));
-    }
-
-    ctx_http.get ("/health",                   ex_wrapper(routes.get_health)); // public endpoint (no API key check)
-    ctx_http.get ("/v1/health",                ex_wrapper(routes.get_health)); // public endpoint (no API key check)
-    ctx_http.get ("/metrics",                  ex_wrapper(routes.get_metrics));
+    // Properties
     ctx_http.get ("/props",                    ex_wrapper(routes.get_props));
     ctx_http.post("/props",                    ex_wrapper(routes.post_props));
-    ctx_http.get ("/models",                   ex_wrapper(routes.get_models)); // public endpoint (no API key check)
-    ctx_http.get ("/v1/models",                ex_wrapper(routes.get_models)); // public endpoint (no API key check)
-    ctx_http.post("/completion",               ex_wrapper(routes.post_completions)); // legacy
-    ctx_http.post("/completions",              ex_wrapper(routes.post_completions));
-    ctx_http.post("/v1/completions",           ex_wrapper(routes.post_completions_oai));
-    ctx_http.post("/chat/completions",         ex_wrapper(routes.post_chat_completions));
-    ctx_http.post("/v1/chat/completions",      ex_wrapper(routes.post_chat_completions));
-    ctx_http.post("/v1/chat/completions/control", ex_wrapper(routes.post_control));
-    ctx_http.post("/v1/responses",             ex_wrapper(routes.post_responses_oai));
-    ctx_http.post("/responses",                ex_wrapper(routes.post_responses_oai));
-    ctx_http.post("/v1/audio/transcriptions",  ex_wrapper(routes.post_transcriptions_oai));
-    ctx_http.post("/audio/transcriptions",     ex_wrapper(routes.post_transcriptions_oai));
-    ctx_http.post("/v1/messages",              ex_wrapper(routes.post_anthropic_messages)); // anthropic messages API
-    ctx_http.post("/infill",                   ex_wrapper(routes.post_infill));
-    ctx_http.post("/embedding",                ex_wrapper(routes.post_embeddings)); // legacy
-    ctx_http.post("/embeddings",               ex_wrapper(routes.post_embeddings));
-    ctx_http.post("/v1/embeddings",            ex_wrapper(routes.post_embeddings_oai));
-    ctx_http.post("/rerank",                   ex_wrapper(routes.post_rerank));
-    ctx_http.post("/reranking",                ex_wrapper(routes.post_rerank));
-    ctx_http.post("/v1/rerank",                ex_wrapper(routes.post_rerank));
-    ctx_http.post("/v1/reranking",             ex_wrapper(routes.post_rerank));
-    ctx_http.post("/tokenize",                 ex_wrapper(routes.post_tokenize));
-    ctx_http.post("/detokenize",               ex_wrapper(routes.post_detokenize));
-    ctx_http.post("/apply-template",           ex_wrapper(routes.post_apply_template));
-    // token counting
-    ctx_http.post("/chat/completions/input_tokens",    ex_wrapper(routes.post_chat_completions_tok));
-    ctx_http.post("/v1/chat/completions/input_tokens", ex_wrapper(routes.post_chat_completions_tok));
-    ctx_http.post("/responses/input_tokens",           ex_wrapper(routes.post_responses_tok_oai));
-    ctx_http.post("/v1/responses/input_tokens",        ex_wrapper(routes.post_responses_tok_oai));
-    ctx_http.post("/v1/messages/count_tokens",         ex_wrapper(routes.post_anthropic_count_tokens)); // anthropic token counting
-    // LoRA adapters hotswap
-    ctx_http.get ("/lora-adapters",            ex_wrapper(routes.get_lora_adapters));
-    ctx_http.post("/lora-adapters",            ex_wrapper(routes.post_lora_adapters));
-    // Save & load slots
-    ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
-    ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
 
-    // Google Cloud Platform (Vertex AI) compat
-    ctx_http.register_gcp_compat();
-
-    // CORS proxy (EXPERIMENTAL, only used by the Web UI for MCP)
-    // Supports both new ui_mcp_proxy and deprecated webui_mcp_proxy fields
-    if (params.ui_mcp_proxy || params.webui_mcp_proxy) {
-        SRV_WRN("%s", "-----------------\n");
-        SRV_WRN("%s", "CORS proxy is enabled, do not expose server to untrusted environments\n");
-        SRV_WRN("%s", "This feature is EXPERIMENTAL and may be removed or changed in future versions\n");
-        SRV_WRN("%s", "-----------------\n");
-        ctx_http.get ("/cors-proxy",      ex_wrapper(proxy_handler_get));
-        ctx_http.post("/cors-proxy",      ex_wrapper(proxy_handler_post));
-    }
-    // EXPERIMENTAL built-in tools
-    if (!params.server_tools.empty()) {
-        try {
-            tools.setup(params.server_tools);
-        } catch (const std::exception & e) {
-            SRV_ERR("tools setup failed: %s\n", e.what());
-            return 1;
-        }
-        SRV_WRN("%s", "-----------------\n");
-        SRV_WRN("%s", "Built-in tools are enabled, do not expose server to untrusted environments\n");
-        SRV_WRN("%s", "This feature is EXPERIMENTAL and may be changed in the future\n");
-        SRV_WRN("%s", "-----------------\n");
-        ctx_http.get ("/tools",           ex_wrapper(tools.handle_get));
-        ctx_http.post("/tools",           ex_wrapper(tools.handle_post));
-    }
+    // No GCP compat, CORS proxy, or tools needed
 
     //
     // Start the server
@@ -255,74 +156,48 @@ int llama_server(int argc, char ** argv) {
 
     std::function<void()> clean_up;
 
-    if (is_router_server) {
-        SRV_INF("%s", "starting router server, no model will be loaded in this process\n");
+    // Single model server only - no router mode
+    SRV_INF("%s", "starting single-model server\n");
 
-        clean_up = [&models_routes]() {
-            SRV_INF("%s: cleaning up before exit...\n", __func__);
-            if (models_routes.has_value()) {
-                models_routes->models.unload_all();
-            }
-            llama_backend_free();
-        };
+    clean_up = [&ctx_http, &ctx_server]() {
+        SRV_INF("%s: cleaning up before exit...\n", __func__);
+        ctx_http.stop();
+        ctx_server.terminate();
+        llama_backend_free();
+    };
 
-        if (!ctx_http.start()) {
-            clean_up();
-            SRV_ERR("%s", "exiting due to HTTP server error\n");
-            return 1;
-        }
-        ctx_http.is_ready.store(true);
-
-        shutdown_handler = [&](int) {
-            ctx_http.stop();
-        };
-
-    } else {
-        // setup clean up function, to be called before exit
-        clean_up = [&ctx_http, &ctx_server]() {
-            SRV_INF("%s: cleaning up before exit...\n", __func__);
-            ctx_http.stop();
-            ctx_server.terminate();
-            llama_backend_free();
-        };
-
-        // start the HTTP server before loading the model to be able to serve /health requests
-        if (!ctx_http.start()) {
-            clean_up();
-            SRV_ERR("%s", "exiting due to HTTP server error\n");
-            return 1;
-        }
-
-        // load the model
-        SRV_INF("%s", "loading model\n");
-
-        if (server_models::is_child_server()) {
-            ctx_server.on_sleeping_changed([&](bool sleeping) {
-                server_models::notify_router_sleeping_state(sleeping);
-            });
-        }
-
-        if (!ctx_server.load_model(params)) {
-            clean_up();
-            if (ctx_http.thread.joinable()) {
-                ctx_http.thread.join();
-            }
-            SRV_ERR("%s", "exiting due to model loading error\n");
-            return 1;
-        }
-
-        routes.update_meta(ctx_server);
-        ctx_http.is_ready.store(true);
-
-        SRV_INF("%s", "model loaded\n");
-
-        shutdown_handler = [&](int) {
-            // this will unblock start_loop()
-            ctx_server.terminate();
-        };
+    // start the HTTP server before loading the model to be able to serve /health requests
+    if (!ctx_http.start()) {
+        clean_up();
+        SRV_ERR("%s", "exiting due to HTTP server error\n");
+        return 1;
     }
 
-    // TODO: refactor in common/console
+    // load the model
+    SRV_INF("%s", "loading model\n");
+
+    if (!ctx_server.load_model(params)) {
+        clean_up();
+        if (ctx_http.thread.joinable()) {
+            ctx_http.thread.join();
+        }
+        SRV_ERR("%s", "exiting due to model loading error\n");
+        return 1;
+    }
+
+    routes.update_meta(ctx_server);
+    ctx_http.is_ready.store(true);
+
+    SRV_INF("%s", "model loaded\n");
+
+    shutdown_handler = [&](int) {
+        // this will unblock start_loop()
+        ctx_server.terminate();
+    };
+
+    SRV_INF("server is listening on %s\n", ctx_http.listening_address.c_str());
+
+    // Signal handling for graceful shutdown
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
     struct sigaction sigint_action;
     sigint_action.sa_handler = signal_handler;
@@ -337,41 +212,17 @@ int llama_server(int argc, char ** argv) {
     SetConsoleCtrlHandler(reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
 #endif
 
-    if (is_router_server) {
-        SRV_INF("router server is listening on %s\n", ctx_http.listening_address.c_str());
-        SRV_WRN("%s", "NOTE: router mode is experimental\n");
-        SRV_WRN("%s", "      it is not recommended to use this mode in untrusted environments\n");
-        if (ctx_http.thread.joinable()) {
-            ctx_http.thread.join(); // keep the main thread alive
-        }
+    // this call blocks the main thread until queue_tasks.terminate() is called
+    ctx_server.start_loop();
 
-        // when the HTTP server stops, clean up and exit
-        clean_up();
-    } else {
-        SRV_INF("server is listening on %s\n", ctx_http.listening_address.c_str());
+    clean_up();
+    if (ctx_http.thread.joinable()) {
+        ctx_http.thread.join();
+    }
 
-        // optionally, notify router server that this instance is ready
-        std::thread monitor_thread;
-        if (server_models::is_child_server()) {
-            json model_info = routes.get_model_info();
-            monitor_thread = server_models::setup_child_server(shutdown_handler, model_info);
-        }
-
-        // this call blocks the main thread until queue_tasks.terminate() is called
-        ctx_server.start_loop();
-
-        clean_up();
-        if (ctx_http.thread.joinable()) {
-            ctx_http.thread.join();
-        }
-        if (monitor_thread.joinable()) {
-            monitor_thread.join();
-        }
-
-        auto * ll_ctx = ctx_server.get_llama_context();
-        if (ll_ctx != nullptr) {
-            common_memory_breakdown_print(ll_ctx);
-        }
+    auto * ll_ctx = ctx_server.get_llama_context();
+    if (ll_ctx != nullptr) {
+        common_memory_breakdown_print(ll_ctx);
     }
 
     return 0;

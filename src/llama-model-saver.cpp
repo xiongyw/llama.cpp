@@ -13,25 +13,8 @@
 #include <string>
 
 bool llama_model_saver_supports_arch(llm_arch arch) {
-    switch (arch) {
-        case LLM_ARCH_PLAMO3:
-        case LLM_ARCH_GEMMA3:
-        case LLM_ARCH_GEMMA3N:
-        case LLM_ARCH_COHERE2:
-        case LLM_ARCH_COHERE2MOE:
-        case LLM_ARCH_OLMO2:
-        case LLM_ARCH_BITNET:
-        case LLM_ARCH_T5:
-        case LLM_ARCH_EXAONE_MOE:
-        case LLM_ARCH_AFMOE:
-        case LLM_ARCH_APERTUS:
-        case LLM_ARCH_MIMO2:
-        case LLM_ARCH_STEP35:
-        case LLM_ARCH_MELLUM:
-            return false;
-        default:
-            return true;
-    }
+    // QWEN35 is supported by model saver
+    return arch == LLM_ARCH_QWEN35;
 }
 
 llama_model_saver::llama_model_saver(const struct llama_model * model) :

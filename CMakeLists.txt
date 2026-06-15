@@ -33,30 +33,10 @@ endif()
 
 option(LLAMA_USE_SYSTEM_GGML "Use system libggml" OFF)
 
-option(LLAMA_WASM_MEM64 "llama: use 64-bit memory in WASM builds" ON)
-
-if (EMSCRIPTEN)
+if (MINGW)
     set(BUILD_SHARED_LIBS_DEFAULT OFF)
-
-    # Use 64-bit memory to support backend_get_memory queries
-    # TODO: analyze performance impact, see https://spidermonkey.dev/blog/2025/01/15/is-memory64-actually-worth-using
-    if (LLAMA_WASM_MEM64)
-      add_compile_options("-sMEMORY64=1")
-      add_link_options("-sMEMORY64=1")
-    endif()
-    add_link_options("-sALLOW_MEMORY_GROWTH=1")
-
-    option(LLAMA_WASM_SINGLE_FILE "llama: embed WASM inside the generated llama.js" OFF)
-    option(LLAMA_BUILD_HTML "llama: build HTML file" ON)
-    if (LLAMA_BUILD_HTML)
-        set(CMAKE_EXECUTABLE_SUFFIX ".html")
-    endif()
 else()
-    if (MINGW)
-        set(BUILD_SHARED_LIBS_DEFAULT OFF)
-    else()
-        set(BUILD_SHARED_LIBS_DEFAULT ON)
-    endif()
+    set(BUILD_SHARED_LIBS_DEFAULT ON)
 endif()
 
 option(BUILD_SHARED_LIBS "build shared libraries" ${BUILD_SHARED_LIBS_DEFAULT})
@@ -78,11 +58,7 @@ if (LLAMA_STANDALONE)
     list(APPEND CMAKE_VS_GLOBALS EnforceProcessCountAcrossBuilds=true)
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    set(LLAMA_TOOLS_INSTALL_DEFAULT OFF)
-else()
-    set(LLAMA_TOOLS_INSTALL_DEFAULT ${LLAMA_STANDALONE})
-endif()
+include("cmake/license.cmake")
 
 #
 # option list
@@ -101,23 +77,19 @@ option(LLAMA_SANITIZE_ADDRESS   "llama: enable address sanitizer"   OFF)
 option(LLAMA_SANITIZE_UNDEFINED "llama: enable undefined sanitizer" OFF)
 
 # utils
-option(LLAMA_BUILD_COMMON "llama: build common utils library" ${LLAMA_STANDALONE})
+option(LLAMA_BUILD_COMMON "llama: build common utils library" ON)
 
 # extra artifacts
-option(LLAMA_BUILD_TESTS     "llama: build tests"                                                                ${LLAMA_STANDALONE})
-option(LLAMA_BUILD_TOOLS     "llama: build tools"                                                                ${LLAMA_STANDALONE})
-option(LLAMA_BUILD_EXAMPLES  "llama: build examples"                                                             ${LLAMA_STANDALONE})
-option(LLAMA_BUILD_SERVER    "llama: build server example"                                                       ${LLAMA_STANDALONE})
-option(LLAMA_BUILD_APP       "llama: build the unified binary"                                                   ${LLAMA_STANDALONE})
-option(LLAMA_BUILD_UI        "llama: build the embedded Web UI for server"                                       ON)
+option(LLAMA_BUILD_TESTS     "llama: build tests"     OFF)
+option(LLAMA_BUILD_TOOLS     "llama: build tools"     ON)
+option(LLAMA_BUILD_EXAMPLES  "llama: build examples"  OFF)
+option(LLAMA_BUILD_SERVER    "llama: build server"    ON)
+option(LLAMA_BUILD_APP       "llama: build the unified binary" OFF)
+option(LLAMA_BUILD_UI        "llama: build the embedded Web UI for server"  ON)
 option(LLAMA_USE_PREBUILT_UI "llama: use prebuilt UI from HF Bucket when available (requires LLAMA_BUILD_UI=ON)" ON)
 
-option(LLAMA_TOOLS_INSTALL "llama: install tools" ${LLAMA_TOOLS_INSTALL_DEFAULT})
-option(LLAMA_TESTS_INSTALL "llama: install tests" ON)
-
 # 3rd party libs
-option(LLAMA_OPENSSL    "llama: use openssl to support HTTPS" ON)
-option(LLAMA_LLGUIDANCE "llama-common: include LLGuidance library for structured output in common utils" OFF)
+option(LLAMA_OPENSSL "llama: use openssl to support HTTPS" ON)
 
 
 # Required for relocatable CMake package
@@ -145,31 +117,6 @@ if (NOT DEFINED GGML_CUDA_GRAPHS)
     set(GGML_CUDA_GRAPHS_DEFAULT ON)
 endif()
 
-# transition helpers
-function (llama_option_depr TYPE OLD)
-    if (${OLD})
-        set(NEW "${ARGV2}")
-        if(NEW)
-            message(${TYPE} "${OLD} is deprecated, use ${NEW} instead")
-            set(${NEW} ON PARENT_SCOPE)
-        else()
-            message(${TYPE} "${OLD} is deprecated and will be ignored")
-        endif()
-    endif()
-endfunction()
-
-llama_option_depr(FATAL_ERROR LLAMA_CUBLAS              GGML_CUDA)
-llama_option_depr(WARNING     LLAMA_CUDA                GGML_CUDA)
-llama_option_depr(WARNING     LLAMA_METAL               GGML_METAL)
-llama_option_depr(WARNING     LLAMA_METAL_EMBED_LIBRARY GGML_METAL_EMBED_LIBRARY)
-llama_option_depr(WARNING     LLAMA_NATIVE              GGML_NATIVE)
-llama_option_depr(WARNING     LLAMA_RPC                 GGML_RPC)
-llama_option_depr(WARNING     LLAMA_SYCL                GGML_SYCL)
-llama_option_depr(WARNING     LLAMA_SYCL_F16            GGML_SYCL_F16)
-llama_option_depr(WARNING     LLAMA_CANN                GGML_CANN)
-llama_option_depr(WARNING     LLAMA_CURL)
-
-include("cmake/license.cmake")
 license_add_file("llama.cpp" "LICENSE")
 
 #
@@ -204,22 +151,8 @@ if (LLAMA_BUILD_COMMON)
     add_subdirectory(vendor/cpp-httplib)
 endif()
 
-if (LLAMA_BUILD_COMMON AND LLAMA_BUILD_TESTS AND NOT CMAKE_JS_VERSION)
-    include(CTest)
-    add_subdirectory(tests)
-endif()
-
-if (LLAMA_BUILD_COMMON AND LLAMA_BUILD_EXAMPLES)
-    add_subdirectory(examples)
-    add_subdirectory(pocs)
-endif()
-
 if (LLAMA_BUILD_COMMON AND LLAMA_BUILD_TOOLS)
     add_subdirectory(tools)
-endif()
-
-if (LLAMA_BUILD_APP)
-    add_subdirectory(app)
 endif()
 
 #
@@ -245,6 +178,10 @@ install(TARGETS llama LIBRARY PUBLIC_HEADER)
 
 if (LLAMA_BUILD_COMMON)
     install(TARGETS llama-common LIBRARY)
+endif()
+
+if (LLAMA_BUILD_SERVER)
+    install(TARGETS llama-server RUNTIME)
 endif()
 
 configure_package_config_file(
