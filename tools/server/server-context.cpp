@@ -400,6 +400,16 @@ struct server_slot {
 
             SLT_INF(*this, "stop processing: n_tokens = %d, truncated = %d\n", prompt.n_tokens(), truncated);
 
+            // log slot checkpoint state before reset
+            if (!prompt.checkpoints.empty()) {
+                size_t total_data = 0;
+                for (const auto & ckpt : prompt.checkpoints) {
+                    total_data += ckpt.data_tgt.size() + ckpt.data_dft.size();
+                }
+                SLT_TRC(*this, "checkpoints: %zu ckpts, %d tokens, %.3f MiB total\n",
+                        prompt.checkpoints.size(), prompt.n_tokens(), total_data / (1024.0 * 1024.0));
+            }
+
             t_last_used        =  ggml_time_us();
             t_token_generation = (ggml_time_us() - t_start_generation) / 1e3;
 
@@ -3634,10 +3644,6 @@ private:
         }
 
         SRV_DBG("%s", "run slots completed\n");
-
-        if (prompt_cache) {
-            prompt_cache->log_state();
-        }
     }
 
     int get_slot_n_ctx() {

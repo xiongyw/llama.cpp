@@ -2006,12 +2006,16 @@ size_t server_prompt_cache::n_tokens() const {
 }
 
 server_prompt * server_prompt_cache::alloc(const server_prompt & prompt, size_t state_size_tgt, size_t state_size_dft) {
+    SRV_TRC("[cache::alloc] saving prompt: %d tokens, state = %.3f MiB (tgt=%.3f, dft=%.3f), cache has %zu entries\n",
+            (int)prompt.tokens.size(), (state_size_tgt + state_size_dft) / (1024.0 * 1024.0),
+            state_size_tgt / (1024.0 * 1024.0), state_size_dft / (1024.0 * 1024.0), states.size());
+
     // first check if the current state is contained fully in the cache
     for (auto it = states.begin(); it != states.end(); ++it) {
         const int cur_lcp_len = it->tokens.get_common_prefix(prompt.tokens);
 
         if (cur_lcp_len == (int) prompt.tokens.size()) {
-            SRV_INF("%s", " - prompt is already in the cache, skipping\n");
+            SRV_TRC("[cache::alloc] prompt already in cache (%d tokens), skipping\n", cur_lcp_len);
             return nullptr;
         }
     }
@@ -2021,7 +2025,8 @@ server_prompt * server_prompt_cache::alloc(const server_prompt & prompt, size_t 
         const int len = it->tokens.get_common_prefix(prompt.tokens);
 
         if (len == (int) it->tokens.size()) {
-            SRV_WRN(" - removing obsolete cached prompt with length %d\n", len);
+            SRV_TRC("[cache::alloc] removing obsolete cached prompt: %d tokens (lcp=%d), was %.3f MiB\n",
+                    len, len, it->size() / (1024.0 * 1024.0));
 
             it = states.erase(it);
         } else {
@@ -2038,6 +2043,8 @@ server_prompt * server_prompt_cache::alloc(const server_prompt & prompt, size_t 
         state_data_dft.resize(state_size_dft);
     } catch (const std::bad_alloc & e) {
         SRV_ERR("failed to allocate memory for prompt cache state: %s\n", e.what());
+        SRV_TRC("[cache::alloc] OOM! Current cache: %zu prompts, %.3f MiB. Requested: %.3f MiB\n",
+                states.size(), size() / (1024.0 * 1024.0), (state_size_tgt + state_size_dft) / (1024.0 * 1024.0));
 
         limit_size = std::max<size_t>(1, 0.4*size());
 
@@ -2057,6 +2064,10 @@ server_prompt * server_prompt_cache::alloc(const server_prompt & prompt, size_t 
         /*.checkpoints =*/ prompt.checkpoints,
     });
 
+    SRV_TRC("[cache::alloc] added new entry: %d tokens, %.3f MiB. Cache now: %zu prompts, %.3f MiB total\n",
+            (int)prompt.tokens.size(), (state_size_tgt + state_size_dft) / (1024.0 * 1024.0),
+            states.size(), size() / (1024.0 * 1024.0));
+
     return &states.back();
 }
 
@@ -2065,6 +2076,9 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
 
     float f_keep_best = prompt.tokens.size() > 0 ? float(lcp_best) / prompt.tokens.size() : -1.0f; // empty slot: any cache entry wins
     float sim_best    = float(lcp_best) / tokens_new.size();
+
+    SRV_TRC("[cache::load] new request: %d tokens, slot has %d tokens (lcp=%d), cache has %zu entries\n",
+            (int)tokens_new.size(), (int)prompt.tokens.size(), lcp_best, states.size());
 
     SRV_INF(" - looking for better prompt, base f_keep = %.3f, sim = %.3f\n", f_keep_best, sim_best);
 
@@ -2091,6 +2105,9 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
     }
 
     if (it_best != states.end()) {
+        SRV_TRC("[cache::load] found match: %d tokens, f_keep=%.3f, sim=%.3f, was %.3f MiB\n",
+                (int)it_best->tokens.size(), f_keep_best, sim_best, it_best->size() / (1024.0 * 1024.0));
+
         SRV_INF(" - found better prompt with f_keep = %.3f, sim = %.3f\n", f_keep_best, sim_best);
 
         {
@@ -2130,12 +2147,20 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
         prompt = std::move(*it_best);
 
         states.erase(it_best);
+
+        SRV_TRC("[cache::load] loaded and erased from cache, cache now has %zu entries\n", states.size());
+    }
+
+    if (it_best == states.end()) {
+        SRV_TRC("[cache::load] no match found, cache unchanged (%zu entries)\n", states.size());
     }
 
     return true;
 }
 
 void server_prompt_cache::update() {
+    SRV_TRC("[cache::update] before eviction: %zu prompts, %.3f MiB\n", states.size(), size() / (1024.0 * 1024.0));
+
     if (limit_size > 0) {
         // always keep at least one state, regardless of the limits
         while (states.size() > 1 && size() > limit_size) {
@@ -2160,6 +2185,9 @@ void server_prompt_cache::update() {
             if (states.empty()) {
                 break;
             }
+
+            SRV_TRC("[cache::update] evicting (token limit): removing %d tokens, %.3f MiB\n",
+                    (int)states.front().tokens.size(), states.front().size() / (1024.0 * 1024.0));
 
             SRV_WRN(" - cache token limit (%zu, est: %zu) reached, removing oldest entry (size = %.3f MiB)\n",
                     limit_tokens, limit_tokens_cur, states.front().size() / (1024.0 * 1024.0));
