@@ -2548,37 +2548,6 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         // we define this arg on both COMMON and EXPORT_LORA, so when showing help message of export-lora, it will be categorized as "example-specific" arg
     ).set_examples({LLAMA_EXAMPLE_COMMON, LLAMA_EXAMPLE_EXPORT_LORA}));
     add_opt(common_arg(
-        {"--control-vector"}, "FNAME",
-        "add a control vector\nnote: use comma-separated values to add multiple control vectors",
-        [](common_params & params, const std::string & value) {
-            for (const auto & item : parse_csv_row(value)) {
-                params.control_vectors.push_back({ 1.0f, item, });
-            }
-        }
-    ));
-    add_opt(common_arg(
-        {"--control-vector-scaled"}, "FNAME:SCALE,...",
-        "add a control vector with user defined scaling SCALE\n"
-        "note: use comma-separated values (format: FNAME:SCALE,...)",
-        [](common_params & params, const std::string & value) {
-            for (const auto & item : parse_csv_row(value)) {
-                auto parts = string_split<std::string>(item, ':');
-                if (parts.size() != 2) {
-                    throw std::invalid_argument("control-vector-scaled format: FNAME:SCALE");
-                }
-                params.control_vectors.push_back({ std::stof(parts[1]), parts[0] });
-            }
-        }
-    ));
-    add_opt(common_arg(
-        {"--control-vector-layer-range"}, "START", "END",
-        "layer range to apply the control vector(s) to, start and end inclusive",
-        [](common_params & params, const std::string & start, const std::string & end) {
-            params.control_vector_layer_start = std::stoi(start);
-            params.control_vector_layer_end = std::stoi(end);
-        }
-    ));
-    add_opt(common_arg(
         {"-a", "--alias"}, "STRING",
         "set model name aliases, comma-separated (to be used by API)",
         [](common_params & params, const std::string & value) {

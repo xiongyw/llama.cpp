@@ -49,8 +49,6 @@ struct common_adapter_lora_info {
 
 using llama_tokens = std::vector<llama_token>;
 
-struct common_control_vector_load_info;
-
 //
 // CPU utils
 //
@@ -421,8 +419,6 @@ struct lr_opt {
     void init();
 };
 
-struct ggml_opt_optimizer_params common_opt_lr_pars(void * userdata);
-
 struct common_params {
     int32_t n_predict             =    -1; // max. number of new tokens to predict, -1 == no limit
     int32_t n_ctx                 = 266144; // context size (256K for Qwen3.6-27B)
@@ -504,11 +500,7 @@ struct common_params {
     bool lora_init_without_apply = false; // only load lora to memory, but do not apply it to ctx (user can manually apply lora later using llama_adapter_lora_apply)
     std::vector<common_adapter_lora_info> lora_adapters; // lora adapter path with user defined scale
 
-    std::vector<common_control_vector_load_info> control_vectors; // control vector with user defined scale
-
     int32_t verbosity                  = 3;  // LOG_LEVEL_INFO
-    int32_t control_vector_layer_start = -1; // layer range for control vector
-    int32_t control_vector_layer_end   = -1; // layer range for control vector
     bool    offline                    = false;
     bool    skip_download              = false; // skip model file downloading
 
@@ -993,29 +985,6 @@ std::string common_detokenize(
 // TODO: replace embd_norm with an enum
 void common_embd_normalize(const float * inp, float * out, int n, int embd_norm);
 
-float common_embd_similarity_cos(const float * embd1, const float * embd2, int n);
-
-//
-// Control vector utils
-//
-
-struct common_control_vector_data {
-    int n_embd;
-
-    // stores data for layers [1, n_layer] where n_layer = data.size() / n_embd
-    std::vector<float> data;
-};
-
-struct common_control_vector_load_info {
-    float strength;
-
-    std::string fname;
-};
-
-// Load control vectors, scale each by strength, and add them together.
-// On error, returns {-1, empty}
-common_control_vector_data common_control_vector_load(const std::vector<common_control_vector_load_info> & load_infos);
-
 //
 // Split utils
 //
@@ -1045,8 +1014,6 @@ inline llama_model_tensor_buft_override llm_ffn_exps_cpu_override() {
 //
 // training utils
 //
-
-ggml_opt_dataset_t common_opt_dataset_init(struct llama_context * ctx, const std::vector<llama_token> & tokens, int64_t stride);
 
 // "adamw" or "sgd" (case insensitive)
 enum ggml_opt_optimizer_type common_opt_get_optimizer(const char *);

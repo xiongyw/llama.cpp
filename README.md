@@ -107,11 +107,28 @@ that is not needed for this narrow use case.
 - Keep only Q4_0, Q4_1, Q5_0, Q5_1, Q8_0 (formats used by Qwen3.6 GGUF)
 - Remove MXFP4, IQ2, IQ3, IQ4, K-quants if not needed
 
-### Phase 5: Common library cleanup
+### Phase 5: Common library cleanup — DONE
 
-- Remove unused sampling strategies
-- Remove speculative decoding, control vectors, multimodal from common
-- Simplify `common_params` struct
+**Files modified:**
+- `common/common.cpp` (-189 lines):
+  - Removed `common_embd_similarity_cos` (embedding similarity, unused by server)
+  - Removed `common_control_vector_load_one` (control vector loading, CLI-only)
+  - Removed `common_control_vector_load` (control vector loading, CLI-only)
+  - Removed control vector block from `common_init_result` constructor
+  - Removed `common_opt_dataset_init` (training dataset init, finetune-only)
+  - Removed `common_opt_lr_pars` (training optimizer params, finetune-only)
+- `common/common.h` (-33 lines):
+  - Removed `common_embd_similarity_cos` declaration
+  - Removed `common_control_vector_data` struct
+  - Removed `common_control_vector_load_info` struct and forward declaration
+  - Removed `common_control_vector_load` declaration
+  - Removed `common_opt_dataset_init` declaration
+  - Removed `common_opt_lr_pars` declaration
+  - Removed `control_vectors`, `control_vector_layer_start`, `control_vector_layer_end` from `common_params`
+- `common/arg.cpp` (-31 lines):
+  - Removed `--control-vector`, `--control-vector-scaled`, `--control-vector-layer-range` CLI args
+
+**Result:** 3 files, 253 deletions
 
 ### Phase 6: Build verification
 
@@ -163,6 +180,7 @@ cmake --build . --config Release -j$(nproc)
 - Vulkan build: **verified passing** (glslc + VK 1.3.275, coopmat supported, ccache enabled)
 - Phase 2 (arch cleanup): **completed**
 - Phase 3 (Vulkan shader simplification): **completed**
+- Phase 5 (common library cleanup): **completed**
 
 ---
 
