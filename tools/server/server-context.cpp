@@ -401,14 +401,12 @@ struct server_slot {
             SLT_INF(*this, "stop processing: n_tokens = %d, truncated = %d\n", prompt.n_tokens(), truncated);
 
             // log slot checkpoint state before reset
-            if (!prompt.checkpoints.empty()) {
-                size_t total_data = 0;
-                for (const auto & ckpt : prompt.checkpoints) {
-                    total_data += ckpt.data_tgt.size() + ckpt.data_dft.size();
-                }
-                SLT_TRC(*this, "checkpoints: %zu ckpts, %d tokens, %.3f MiB total\n",
-                        prompt.checkpoints.size(), prompt.n_tokens(), total_data / (1024.0 * 1024.0));
+            size_t total_data = 0;
+            for (const auto & ckpt : prompt.checkpoints) {
+                total_data += ckpt.data_tgt.size() + ckpt.data_dft.size();
             }
+            SLT_TRC(*this, "checkpoints: %zu ckpts, %d tokens, %.3f MiB total\n",
+                    prompt.checkpoints.size(), prompt.n_tokens(), (float)total_data / 1024 / 1024);
 
             t_last_used        =  ggml_time_us();
             t_token_generation = (ggml_time_us() - t_start_generation) / 1e3;
@@ -2141,7 +2139,7 @@ private:
             // make room for the new checkpoint, if needed
             const auto & cur = slot.prompt.checkpoints.front();
 
-            SLT_WRN(slot, "erasing old context checkpoint (pos_min = %d, pos_max = %d, n_tokens = %" PRId64 ", size = %.3f MiB)\n",
+            SLT_TRC(slot, "erasing old context checkpoint (pos_min = %d, pos_max = %d, n_tokens = %" PRId64 ", size = %.3f MiB)\n",
                     cur.pos_min, cur.pos_max, cur.n_tokens, (float) cur.size() / 1024 / 1024);
 
             slot.prompt.checkpoints.erase(slot.prompt.checkpoints.begin());
@@ -2156,6 +2154,17 @@ private:
 
         cur.update_tgt(ctx_tgt,       slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
         cur.update_dft(ctx_dft.get(), slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+
+        // log checkpoint details
+        size_t total_ckpt_data = 0;
+        for (const auto & ckpt : slot.prompt.checkpoints) {
+            total_ckpt_data += ckpt.data_tgt.size() + ckpt.data_dft.size();
+        }
+        SLT_TRC(slot, "checkpoint[%d/%d] pos=[%d..%d] n_tokens=%" PRId64 " size=%.3f MiB (tgt=%.3f, dft=%.3f) | total: %zu ckpts, %.3f MiB\n",
+                (int)slot.prompt.checkpoints.size(), params_base.n_ctx_checkpoints,
+                cur.pos_min, cur.pos_max, cur.n_tokens, (float)cur.size() / 1024 / 1024,
+                (float)cur.data_tgt.size() / 1024 / 1024, (float)cur.data_dft.size() / 1024 / 1024,
+                slot.prompt.checkpoints.size(), (float)total_ckpt_data / 1024 / 1024);
 
         SLT_INF(slot,
                 "created context checkpoint %d of %d (pos_min = %d, pos_max = %d, n_tokens = %" PRId64 ", size = %.3f MiB)\n",
