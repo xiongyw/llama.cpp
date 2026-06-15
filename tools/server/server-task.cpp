@@ -2175,4 +2175,29 @@ void server_prompt_cache::update() {
         SRV_INF("   - prompt %p: %7d tokens, checkpoints: %2zu, %9.3f MiB\n",
                 (const void *)&state, state.n_tokens(), state.checkpoints.size(), state.size() / (1024.0 * 1024.0));
     }
+
+    log_state();
+}
+
+void server_prompt_cache::log_state() const {
+    SRV_TRC("[prompt_cache] %zu prompts, %.3f MiB total (limit: %.3f MiB, %zu tokens)\n",
+            states.size(), size() / (1024.0 * 1024.0), limit_size / (1024.0 * 1024.0), limit_tokens);
+
+    size_t idx = 0;
+    for (const auto & state : states) {
+        const size_t data_main_miB = state.data.main.size() / (1024.0 * 1024.0);
+        const size_t data_drft_miB = state.data.drft.size() / (1024.0 * 1024.0);
+
+        SRV_TRC("  [%zu] %p: %7d tokens, %2zu checkpoints, %9.3f MiB (main=%.3f, drft=%.3f)\n",
+                idx++, (const void *)&state, state.n_tokens(), state.checkpoints.size(),
+                state.size() / (1024.0 * 1024.0), data_main_miB, data_drft_miB);
+
+        size_t ci = 0;
+        for (const auto & ckpt : state.checkpoints) {
+            SRV_TRC("      ckpt[%zu] pos=[%ld..%ld] tokens=%ld tgt=%.3f MiB dft=%.3f MiB\n",
+                     ci, (long)ckpt.pos_min, (long)ckpt.pos_max, (long)ckpt.n_tokens,
+                     ckpt.data_tgt.size() / (1024.0 * 1024.0), ckpt.data_dft.size() / (1024.0 * 1024.0));
+            ++ci;
+        }
+    }
 }
