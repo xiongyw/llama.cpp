@@ -2185,8 +2185,8 @@ void server_prompt_cache::log_state() const {
 
     size_t idx = 0;
     for (const auto & state : states) {
-        const size_t data_main_miB = state.data.main.size() / (1024.0 * 1024.0);
-        const size_t data_drft_miB = state.data.drft.size() / (1024.0 * 1024.0);
+        const double data_main_miB = state.data.main.size() / (1024.0 * 1024.0);
+        const double data_drft_miB = state.data.drft.size() / (1024.0 * 1024.0);
 
         SRV_TRC("  [%zu] %p: %7d tokens, %2zu checkpoints, %9.3f MiB (main=%.3f, drft=%.3f)\n",
                 idx++, (const void *)&state, state.n_tokens(), state.checkpoints.size(),

@@ -3634,6 +3634,10 @@ private:
         }
 
         SRV_DBG("%s", "run slots completed\n");
+
+        if (prompt_cache) {
+            prompt_cache->log_state();
+        }
     }
 
     int get_slot_n_ctx() {
