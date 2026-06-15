@@ -314,115 +314,8 @@ enum vk_device_architecture {
 };
 
 static vk_device_architecture get_device_architecture(const vk::PhysicalDevice& device) {
-    vk::PhysicalDeviceProperties props = device.getProperties();
-
-    if (props.vendorID == VK_VENDOR_ID_AMD) {
-        const std::vector<vk::ExtensionProperties> ext_props = device.enumerateDeviceExtensionProperties();
-
-        bool amd_shader_core_properties = false;
-        bool integer_dot_product = false;
-        bool subgroup_size_control = false;
-
-        for (const auto& properties : ext_props) {
-            if (strcmp("VK_AMD_shader_core_properties", properties.extensionName) == 0) {
-                amd_shader_core_properties = true;
-            } else if (strcmp("VK_KHR_shader_integer_dot_product", properties.extensionName) == 0) {
-                integer_dot_product = true;
-            } else if (strcmp("VK_EXT_subgroup_size_control", properties.extensionName) == 0) {
-                subgroup_size_control = true;
-            }
-        }
-
-        if (!amd_shader_core_properties || !integer_dot_product || !subgroup_size_control) {
-            return vk_device_architecture::OTHER;
-        }
-
-        vk::PhysicalDeviceProperties2 props2;
-        vk::PhysicalDeviceShaderCorePropertiesAMD shader_core_props_amd;
-        vk::PhysicalDeviceShaderIntegerDotProductPropertiesKHR integer_dot_props;
-        vk::PhysicalDeviceSubgroupSizeControlPropertiesEXT subgroup_size_control_props;
-
-        props2.pNext = &shader_core_props_amd;
-        shader_core_props_amd.pNext = &integer_dot_props;
-        integer_dot_props.pNext = &subgroup_size_control_props;
-
-        device.getProperties2(&props2);
-
-        if (subgroup_size_control_props.maxSubgroupSize == 64 && subgroup_size_control_props.minSubgroupSize == 64) {
-            return vk_device_architecture::AMD_GCN;
-        }
-        if (subgroup_size_control_props.maxSubgroupSize == 64 && subgroup_size_control_props.minSubgroupSize == 32) {
-            // RDNA
-            if (shader_core_props_amd.wavefrontsPerSimd == 20) {
-                return vk_device_architecture::AMD_RDNA1;
-            }
-            if (integer_dot_props.integerDotProduct4x8BitPackedMixedSignednessAccelerated) {
-                return vk_device_architecture::AMD_RDNA3;
-            }
-            return vk_device_architecture::AMD_RDNA2;
-        }
-    } else if (props.vendorID == VK_VENDOR_ID_INTEL) {
-        const std::vector<vk::ExtensionProperties> ext_props = device.enumerateDeviceExtensionProperties();
-
-        bool subgroup_size_control = false;
-
-        for (const auto& properties : ext_props) {
-            if (strcmp("VK_EXT_subgroup_size_control", properties.extensionName) == 0) {
-                subgroup_size_control = true;
-            }
-        }
-
-        if (!subgroup_size_control) {
-            return vk_device_architecture::OTHER;
-        }
-
-        vk::PhysicalDeviceProperties2 props2;
-        vk::PhysicalDeviceSubgroupSizeControlPropertiesEXT subgroup_size_control_props;
-
-        props2.pNext = &subgroup_size_control_props;
-        device.getProperties2(&props2);
-
-        if (subgroup_size_control_props.minSubgroupSize == 16) {
-            // Xe2 architecture uses SIMD16 while previous Xe and Gen architecture uses SIMD8.
-            // Minimum subgroup size matches the SIMD width so we distinguish architecture by checking this value.
-            // https://www.intel.com/content/www/us/en/content-details/824434/2024-intel-tech-tour-xe2-and-lunar-lake-s-gpu.html
-            // https://www.intel.com/content/www/us/en/docs/oneapi/optimization-guide-gpu/2025-0/intel-xe-gpu-architecture.html
-            return vk_device_architecture::INTEL_XE2;
-        }
-    } else if (props.vendorID == VK_VENDOR_ID_NVIDIA) {
-        const std::vector<vk::ExtensionProperties> ext_props = device.enumerateDeviceExtensionProperties();
-
-        bool cooperative_matrix = false;
-        bool sm_builtins = false;
-
-        // Detect "pre-turing" based on lack of coopmat support.
-        for (const auto& properties : ext_props) {
-            if (strcmp("VK_KHR_cooperative_matrix", properties.extensionName) == 0) {
-                cooperative_matrix = true;
-            } else if (strcmp("VK_NV_shader_sm_builtins", properties.extensionName) == 0) {
-                sm_builtins = true;
-            }
-        }
-
-        if (!cooperative_matrix) {
-            return vk_device_architecture::NVIDIA_PRE_TURING;
-        }
-
-        if (sm_builtins) {
-            vk::PhysicalDeviceProperties2 props2;
-            vk::PhysicalDeviceShaderSMBuiltinsPropertiesNV sm_props;
-
-            props2.pNext = &sm_props;
-
-            device.getProperties2(&props2);
-
-            // Turing has 32, following architectures have 48
-            if (sm_props.shaderWarpsPerSM == 32) {
-                return vk_device_architecture::NVIDIA_TURING;
-            }
-        }
-    }
-    return vk_device_architecture::OTHER;
+    // Hardcoded for RX 7900 XTX (RDNA3 / gfx1100)
+    return vk_device_architecture::AMD_RDNA3;
 }
 
 enum vk_conv_shapes {
@@ -3550,33 +3443,18 @@ struct GpuPipelineConfig {
     uint32_t default_subgroup_size = 0;
 };
 
-// Pipeline configuration for RDNA1 GPUs.
-static const std::unordered_map<std::string, uint32_t> rdna1_pipelines = {
-    {"soft_max", 64}, {"im2col", 64},
-    {"argmax", 64}, {"mul_mat_vec", 64},
-    {"mul_mat_vec_f16", 32}, {"mul_mat_vec_f32_f16", 32}
-};
-
-// Pipeline configuration for RDNA2 GPUs.
-static const std::unordered_map<std::string, uint32_t> rdna2_pipelines = {
-    {"soft_max", 64}, {"im2col", 64},
-};
+// Pipeline configuration for RDNA3 GPUs (7900 XTX).
+// RDNA3 uses default subgroup size 32 for most pipelines.
+static const std::unordered_map<std::string, uint32_t> rdna3_pipelines = {};
 
 static constexpr uint32_t RDNA_DEFAULT_SUBGROUP_SIZE = 32;
 
-// Define configurations for different GPUs.
+// Define configurations for RDNA3 only.
 static std::vector<GpuPipelineConfig> gpu_pipeline_configs = {
     {
-        vk_device_architecture::AMD_RDNA1,
+        vk_device_architecture::AMD_RDNA3,
         {
-            rdna1_pipelines,
-        },
-        RDNA_DEFAULT_SUBGROUP_SIZE
-    },
-    {
-        vk_device_architecture::AMD_RDNA2,
-        {
-            rdna2_pipelines,
+            rdna3_pipelines,
         },
         RDNA_DEFAULT_SUBGROUP_SIZE
     },
@@ -5468,7 +5346,6 @@ static void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
 }
 
 static bool ggml_vk_khr_cooperative_matrix_support(const vk::PhysicalDeviceProperties& props, const vk::PhysicalDeviceDriverProperties& driver_props, vk_device_architecture arch);
-static uint32_t ggml_vk_intel_shader_core_count(const vk::PhysicalDevice& vkdev);
 
 static vk_device ggml_vk_get_device(size_t idx) {
     VK_LOG_DEBUG("ggml_vk_get_device(" << idx << ")");
@@ -5689,15 +5566,9 @@ static vk_device ggml_vk_get_device(size_t idx) {
         device->subgroup_size = subgroup_props.subgroupSize;
         device->subgroup_size_log2 = uint32_t(log2f(float(device->subgroup_size)));
         device->uma = device->properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu;
-        if (sm_builtins) {
-            device->shader_core_count = sm_props.shaderSMCount;
-        } else if (amd_shader_core_properties2) {
-            device->shader_core_count = amd_shader_core_properties2_props.activeComputeUnitCount;
-        } else if (device->vendor_id == VK_VENDOR_ID_INTEL) {
-            device->shader_core_count = ggml_vk_intel_shader_core_count(device->physical_device);
-        } else {
-            device->shader_core_count = 0;
-        }
+        // RDNA3: use AMD shader core properties for compute unit count
+        device->shader_core_count = amd_shader_core_properties2 ?
+            amd_shader_core_properties2_props.activeComputeUnitCount : 0;
         device->float_controls_rte_fp16 = vk12_props.shaderRoundingModeRTEFloat16;
 
         device->subgroup_basic = (vk11_props.subgroupSupportedStages & vk::ShaderStageFlagBits::eCompute) &&
@@ -17496,62 +17367,10 @@ static bool ggml_vk_device_is_supported(const vk::PhysicalDevice & vkdev) {
 }
 
 static bool ggml_vk_khr_cooperative_matrix_support(const vk::PhysicalDeviceProperties& props, const vk::PhysicalDeviceDriverProperties& driver_props, vk_device_architecture arch) {
-    switch (props.vendorID) {
-    case VK_VENDOR_ID_INTEL:
-        // Only allowing Xe2 GPU at the moment since Xe2 GPU can gain significant performance boost,
-        // while some older hardware (ex. Arc A770) has performance regressions
-        return arch == vk_device_architecture::INTEL_XE2;
-    case VK_VENDOR_ID_AMD:
-        if (driver_props.driverID == vk::DriverId::eAmdProprietary || driver_props.driverID == vk::DriverId::eAmdOpenSource) {
-            // Workaround for AMD proprietary driver reporting support on all GPUs
-            return arch == vk_device_architecture::AMD_RDNA3;
-        }
-        return true;
-    default:
-        return true;
-    }
+    // RDNA3 (7900 XTX) always supports cooperative matrix
+    return true;
 }
 
-static uint32_t ggml_vk_intel_shader_core_count(const vk::PhysicalDevice& vkdev) {
-    VkPhysicalDeviceProperties2 props = vkdev.getProperties2();
-
-    if (props.properties.vendorID != VK_VENDOR_ID_INTEL) {
-        return 0;
-    }
-
-    const uint32_t device_id = props.properties.deviceID;
-
-    switch (device_id) {
-    case 0x56A6:  // A310
-        return 6;
-    case 0x5693:  // A370M
-    case 0x56A5:  // A380
-    case 0x56B1:  // Pro A40/A50
-        return 8;
-    case 0x5697:  // A530M
-        return 12;
-    case 0x5692:  // A550M
-    case 0x56B3:  // Pro A60
-        return 16;
-    case 0x56A2:  // A580
-        return 24;
-    case 0x5691:  // A730M
-    case 0x56A1:  // A750
-        return 28;
-    case 0x56A0:  // A770
-    case 0x5690:  // A770M
-        return 32;
-    case 0xE212:  // Pro B50
-        return 16;
-    case 0xE20C:  // B570
-        return 18;
-    case 0xE20B:  // B580
-    case 0xE211:  // Pro B60
-        return 20;
-    default:
-        return 0;
-    }
-}
 
 // checks
 

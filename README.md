@@ -87,11 +87,20 @@ that is not needed for this narrow use case.
 **Note:** `llama-arch.h` enum values kept (compile-time constants, zero runtime cost).
 `llama-model.cpp` switch cases for other arches kept (unreachable — model mapping throws first).
 
-### Phase 3: Vulkan shader simplification
+### Phase 3: Vulkan shader simplification — DONE
 
-- Hardcode shader target to `RDNA3` (`gfx1100`)
-- Enable `coopmat` extension by default (7900 XTX supports it)
-- Remove runtime shader target detection
+**Files modified:**
+- `ggml/src/ggml-vulkan/CMakeLists.txt` (-4 lines): Hardcode `GL_KHR_cooperative_matrix` ON
+- `ggml/src/ggml-vulkan/ggml-vulkan.cpp` (-188 lines):
+
+**Changes:**
+- `get_device_architecture()`: Replaced 107-line runtime detection with single `return AMD_RDNA3`
+- `gpu_pipeline_configs`: Removed RDNA1/RDNA2 configs, kept only RDNA3 (empty pipeline overrides)
+- `ggml_vk_khr_cooperative_matrix_support()`: Replaced vendor switch with `return true`
+- `ggml_vk_intel_shader_core_count()`: Removed entirely (Intel-specific, 40 lines)
+- `shader_core_count`: Simplified to use AMD shader core properties only
+
+**Result:** 2 files, 19 insertions, 200 deletions
 
 ### Phase 4: Quantization simplification
 
@@ -153,9 +162,12 @@ cmake --build . --config Release -j$(nproc)
 - CPU build: **verified passing**
 - Vulkan build: **verified passing** (glslc + VK 1.3.275, coopmat supported, ccache enabled)
 - Phase 2 (arch cleanup): **completed**
+- Phase 3 (Vulkan shader simplification): **completed**
 
 ---
 
 ## References
 
 - [DrBearJew/RoxxY](https://github.com/DrBearJew/RoxxY) — Related project for RX 7900 XTX llama.cpp optimization
+- [Beellama.cpp](https://github.com/Anbeeld/beellama.cpp)
+- [lucebox](https://github.com/Luce-Org/lucebox-hub)

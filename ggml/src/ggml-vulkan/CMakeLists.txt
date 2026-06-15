@@ -66,13 +66,13 @@ if (Vulkan_FOUND)
 
     set(VULKAN_SHADER_GEN_CMAKE_ARGS "")
 
-    # Test all shader extensions
-    test_shader_extension_support(
-        "GL_KHR_cooperative_matrix"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders/feature-tests/coopmat.comp"
-        "GGML_VULKAN_COOPMAT_GLSLC_SUPPORT"
-    )
+    # RDNA3 (7900 XTX) supports cooperative matrix — hardcode ON
+    message(STATUS "GL_KHR_cooperative_matrix hardcoded ON for RDNA3")
+    set(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT ON)
+    add_compile_definitions(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT)
+    list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS -DGGML_VULKAN_COOPMAT_GLSLC_SUPPORT=ON)
 
+    # Test remaining shader extensions that are not guaranteed on all AMD drivers
     test_shader_extension_support(
         "GL_NV_cooperative_matrix2"
         "${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders/feature-tests/coopmat2.comp"
